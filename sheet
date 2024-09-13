@@ -1,0 +1,189 @@
+function onOpen() {
+  var ui = SpreadsheetApp.getUi(); // Get the user interface for Google Sheets
+  // Create a custom menu titled "Order Process" with various options
+  ui.createMenu('Order Process')
+    .addItem('Execute', 'executeAllFunctions') // 'Execute' option calls the executeAllFunctions function
+    .addItem('Delete', 'deleteUncheckedRows')  // 'Delete' option calls the deleteUncheckedRows function
+    .addItem('Update', 'fillPOColumnAndInsertFormulaInColumnA')  // 'Update' option calls the fillPOColumnAndInsertFormulaInColumnA function
+    .addItem('Mockup', 'fillFormulasAndDropdown')  // 'Mockup' option calls the fillFormulasAndDropdown function
+    .addToUi(); // Add the menu to the UI
+}
+
+function executeAllFunctions() {
+  deleteSpecificColumns()
+    .then(addColumns)
+    .then(applyVlookupFormula)
+    .then(insertSrNoColumn)
+    .then(insertCheckboxColumn)
+    .catch(function(error) {
+      Logger.log('Error: ' + error);
+    });
+}
+
+function deleteSpecificColumns() {
+  return new Promise(function(resolve, reject) {
+    try {
+      var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+      var columnsToDelete = [1, 4, 7, 8, 9, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 25, 26, 29];
+      columnsToDelete.sort(function(a, b) { return b - a; });
+      for (var i = 0; i < columnsToDelete.length; i++) {
+        sheet.deleteColumn(columnsToDelete[i]);
+      }
+      Logger.log('Deleted specific columns successfully.');
+      resolve(); // Call resolve when the function completes
+    } catch (error) {
+      reject(error);
+    }
+  });
+}
+
+function addColumns() {
+  return new Promise(function(resolve, reject) {
+    try {
+      var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+      sheet.insertColumnsAfter(2, 3);
+      sheet.getRange("C1").setValue("PO No");
+      sheet.getRange("D1").setValue("Zoho PO No");
+      sheet.getRange("E1").setValue("Vendor");
+      sheet.insertColumnAfter(12);
+      sheet.getRange("M1").setValue("Remark");
+      Logger.log('Added columns and set headers successfully.');
+      resolve();
+    } catch (error) {
+      reject(error);
+    }
+  });
+}
+
+function applyVlookupFormula() {
+  return new Promise(function(resolve, reject) {
+    try {
+      var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+      var lastRow = sheet.getLastRow();
+      for (var i = 2; i <= lastRow; i++) {
+        var vlookupFormula = `=VLOOKUP(I${i},vendor!A:B,2,FALSE)`;
+        sheet.getRange(i, 5).setFormula(vlookupFormula);
+      }
+      Logger.log('Applied VLOOKUP formula successfully.');
+      resolve();
+    } catch (error) {
+      reject(error);
+    }
+  });
+}
+
+function insertSrNoColumn() {
+  return new Promise(function(resolve, reject) {
+    try {
+      var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+      sheet.insertColumnBefore(1);
+      sheet.getRange(1, 1).setValue('Sr. No.');
+      var lastRow = sheet.getLastRow();
+      for (var row = 2; row <= lastRow; row++) {
+        var formula = '=F' + row + '&"_"&COUNTIF($F$2:F' + row + ',F' + row + ')';
+        sheet.getRange(row, 1).setFormula(formula);
+      }
+      Logger.log('Inserted Sr. No. column and set formulas successfully.');
+      resolve();
+    } catch (error) {
+      reject(error);
+    }
+  });
+}
+
+function insertCheckboxColumn() {
+  return new Promise(function(resolve, reject) {
+    try {
+      var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+      var lastRow = sheet.getLastRow();
+      sheet.insertColumnAfter(14);
+      sheet.getRange(1 , 15).setValue('Checkbox');
+      var range = sheet.getRange(2, 15, lastRow - 1);
+      range.insertCheckboxes();
+      Logger.log('Inserted checkbox column successfully.');
+      resolve();
+    } catch (error) {
+      reject(error);
+    }
+  });
+}
+
+// Function to delete unchecked rows based on the checkbox in column O
+function deleteUncheckedRows() {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+  var lastRow = sheet.getLastRow();
+  var range = sheet.getRange('O1:O' + lastRow);
+  var values = range.getValues();
+
+  // Loop through the values in Column O from bottom to top
+  for (var i = lastRow - 1; i >= 0; i--) {
+    var cellValue = values[i][0];
+    if (cellValue === '' || cellValue === false || cellValue === null) {
+      sheet.deleteRow(i + 1);
+    }
+  }
+  Logger.log('Deleted unchecked rows successfully.');
+}
+
+function fillPOColumnAndInsertFormulaInColumnA() {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+  var lastRow = sheet.getLastRow();
+
+  var date = new Date();
+  var monthNames = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
+  var month = monthNames[date.getMonth()]; // Get the current month in short form
+  var day = date.getDate(); // Get the current day
+
+  var previousValue = "";
+  var uniqueIndex = 1;
+
+  for (var i = 2; i <= lastRow; i++) { // Assuming headers are in the first row, so start from row 2
+    var currentValue = sheet.getRange(i, 6).getValue(); // F column (6th column)
+
+    // Insert the formula in column A
+    var formula = `=F${i}&"_"&COUNTIF($F$2:F${i},F${i})`;
+    sheet.getRange(i, 1).setFormula(formula);
+
+    // Check if the value in column F has changed
+    if (currentValue !== previousValue) {
+      uniqueIndex++; // Increment the unique index when a new value is found
+      previousValue = currentValue;
+    }
+
+    // Format the PO number and insert into column D
+    var poValue = "PO/" + month + "/" + day + (uniqueIndex < 10 ? "0" + uniqueIndex : uniqueIndex);
+    sheet.getRange(i, 4).setValue(poValue); // D column (4th column)
+  }
+
+  Logger.log('Inserted formulas in Column A and filled PO format in Column D successfully.');
+}
+
+
+// Function to fill mockup formulas
+function fillFormulasAndDropdown() {
+  var spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+  
+  // Access the sheets
+  var homeSheet = spreadsheet.getSheetByName('Home');
+  var mockupSheet = spreadsheet.getSheetByName('mockup');
+  
+  // Set the dropdown in A10 of the mockup sheet
+  var columnFData = homeSheet.getRange("F2:F" + homeSheet.getLastRow()).getValues(); // Get column F data from 'Home'
+  var uniqueValues = [...new Set(columnFData.flat())].filter(String); // Create unique list of values
+  var range = mockupSheet.getRange("A10");
+  var rule = SpreadsheetApp.newDataValidation().requireValueInList(uniqueValues).build();
+  range.setDataValidation(rule);
+
+  // Formulas for B15:D15, E15, and F15
+  var formulaB15_D15 = '=IFERROR(VLOOKUP($A$10&"_"&$A15,Home!$A:$M,7,0),"")';
+  var formulaE15 = '=IFERROR(VLOOKUP($A$10&"_"&$A15,Home!$A:$M,8,0),"")';
+  var formulaF15 = '=IFERROR(VLOOKUP($A$10&"_"&$A15,Home!$A:$M,9,0),"")';
+
+  // Set formulas in the specified cells in 'mockup'
+  mockupSheet.getRange('B15:D15').setFormula(formulaB15_D15);
+  mockupSheet.getRange('E15').setFormula(formulaE15);
+  mockupSheet.getRange('F15').setFormula(formulaF15);
+
+  Logger.log('Dropdown created and mockup formulas filled successfully.');
+}
+
